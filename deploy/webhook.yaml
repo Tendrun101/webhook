@@ -1,0 +1,60 @@
+# Copyright (c) 2019 Intel Corporation
+#
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pod-mutate-webhook
+  labels:
+    app: pod-mutate-webhook
+spec:
+  selector:
+    matchLabels:
+      app: pod-mutate-webhook
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: pod-mutate-webhook
+    spec:
+      containers:
+        - name: pod-mutate-webhook
+          image: docker.io/mhy101/pod-webhook-example:latest
+          imagePullPolicy: Always
+          env:
+            - name: RUNTIME_CLASS
+              valueFrom:
+                configMapKeyRef:
+                  name: kata-webhook
+                  key: runtime_class
+                  optional: true
+          args:
+            - -tls-cert-file=/etc/webhook/certs/cert.pem
+            - -tls-key-file=/etc/webhook/certs/key.pem
+            - -exclude-namespaces=kube-system
+          volumeMounts:
+            - name: webhook-certs
+              mountPath: /etc/webhook/certs
+              readOnly: true
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "250Mi"
+      volumes:
+        - name: webhook-certs
+          secret:
+            secretName: pod-mutate-webhook-certs
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pod-mutate-webhook
+  labels:
+    app: pod-mutate-webhook
+spec:
+  ports:
+    - port: 443
+      targetPort: 8080
+  selector:
+    app: pod-mutate-webhook

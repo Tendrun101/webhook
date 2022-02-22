@@ -17,27 +17,35 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"github.com/spf13/cobra"
+	"os"
 
 	"github.com/spf13/viper"
+	"webhook/pkg"
 )
 
-var cfgFile string
+var (
+	cfgFile     string
+	certFile    string
+	keyFile     string
+	nsBlacklist string
+	port        int
+)
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "webhooktest",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
+	Short: "webhooks for dynamic admission control",
+	Long: `multiple webhooks for dynamic admisson controle:
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+Currently contains the following webhooks:
+1. MutatingWebhook, update object's yaml: change default runtime, change default scheduler
+2. `,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
-	// Run: func(cmd *cobra.Command, args []string) { },
+	Run: func(cmd *cobra.Command, args []string) {
+		pkg.WebHookServer()
+	},
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -49,6 +57,13 @@ func Execute() {
 func init() {
 	cobra.OnInitialize(initConfig)
 
+	rootCmd.Flags().StringVar(&certFile, "tls-cert-file", "",
+		"File containing the default x509 Certificate for HTTPS. (CA cert, if any, concatenated after server cert).")
+	rootCmd.Flags().StringVar(&keyFile, "tls-private-key-file", "",
+		"File containing the default x509 private key matching --tls-cert-file.")
+	rootCmd.Flags().IntVar(&port, "port", 443,
+		"Secure port that the webhook listens on")
+	rootCmd.Flags().StringVar(&nsBlacklist, "exclude-namespaces", "", "Comma separated namespace blacklist")
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
