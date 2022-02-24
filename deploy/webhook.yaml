@@ -30,8 +30,8 @@ spec:
                   key: runtime_class
                   optional: true
           args:
-            - -tls-cert-file=/etc/webhook/certs/cert.pem
-            - -tls-key-file=/etc/webhook/certs/key.pem
+            - --tls-cert-file=/etc/webhook/certs/cert.pem
+            - --tls-private-key-file=/etc/webhook/certs/key.pem
             - -exclude-namespaces=kube-system
           volumeMounts:
             - name: webhook-certs

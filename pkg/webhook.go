@@ -1,12 +1,13 @@
 package pkg
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	v1 "k8s.io/api/admission/v1"
 	"k8s.io/api/admission/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/klog/v2"
 	"net/http"
 	"os"
@@ -68,6 +69,44 @@ func changeRuntimeClass(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionResponse 
 	return &reviewResponse
 }
 
+func changeRuntimeClassV1(ar *v1.AdmissionReview) *v1.AdmissionResponse {
+	klog.V(2).Info("calling add-label")
+	obj := struct {
+		metav1.ObjectMeta `json:"metadata,omitempty"`
+	}{}
+
+	raw := ar.Request.Object.Raw
+	err := json.Unmarshal(raw, &obj)
+	if err != nil {
+		klog.Error(err)
+		return &v1.AdmissionResponse{
+			Result: &metav1.Status{
+				Message: err.Error(),
+			},
+		}
+	}
+
+	reviewResponse := v1.AdmissionResponse{}
+	reviewResponse.Allowed = true
+
+	pt := v1.PatchTypeJSONPatch
+	labelValue, hasLabel := obj.ObjectMeta.Labels["added-label"]
+	switch {
+	case len(obj.ObjectMeta.Labels) == 0:
+		reviewResponse.Patch = []byte(addFirstLabelPatch)
+		reviewResponse.PatchType = &pt
+	case !hasLabel:
+		reviewResponse.Patch = []byte(addAdditionalLabelPatch)
+		reviewResponse.PatchType = &pt
+	case labelValue != "yes":
+		reviewResponse.Patch = []byte(updateLabelPatch)
+		reviewResponse.PatchType = &pt
+	default:
+		// already set
+	}
+	return &reviewResponse
+}
+
 func changeRuntimeClassHandler(w http.ResponseWriter, r *http.Request) {
 	var body []byte
 	if r.Body != nil {
@@ -99,7 +138,7 @@ func changeRuntimeClassHandler(w http.ResponseWriter, r *http.Request) {
 	case v1beta1.SchemeGroupVersion.WithKind("AdmissionReview"):
 		requestedAdmissionReview, ok := obj.(*v1beta1.AdmissionReview)
 		if !ok {
-			klog.Errorf("Expected v1beta1.AdmissionReview but got: %T\", obj")
+			klog.Errorf("Expected v1beta1.AdmissionReview but got: %T", obj)
 			return
 		}
 		responseAdmissonReview := &v1beta1.AdmissionReview{}
@@ -107,6 +146,17 @@ func changeRuntimeClassHandler(w http.ResponseWriter, r *http.Request) {
 		responseAdmissonReview.Response = changeRuntimeClass(requestedAdmissionReview)
 		responseAdmissonReview.Response.UID = requestedAdmissionReview.Request.UID
 		responseObj = responseAdmissonReview
+	case v1.SchemeGroupVersion.WithKind("AdmissionReview"):
+		requestedAdmissionReview, ok := obj.(*v1.AdmissionReview)
+		if !ok {
+			klog.Error("Expected v1.AdmmisionReview but got %T", obj)
+			return
+		}
+		responseAdmissionReview := &v1.AdmissionReview{}
+		responseAdmissionReview.SetGroupVersionKind(*gvk)
+		responseAdmissionReview.Response = changeRuntimeClassV1(requestedAdmissionReview)
+		responseAdmissionReview.Response.UID = requestedAdmissionReview.Request.UID
+		responseObj = responseAdmissionReview
 	default:
 		msg := fmt.Sprintf("Unsupported group version kind: %v", gvk)
 		klog.Error(msg)
@@ -130,9 +180,13 @@ func changeRuntimeClassHandler(w http.ResponseWriter, r *http.Request) {
 func WebHookServer() {
 
 	go func() {
-		http.HandleFunc("/add-label", changeRuntimeClassHandler)
-		http.ListenAndServeTLS("0.0.0.0:443", "webhook.crt", "webhook.key", nil)
+		http.HandleFunc("/mutate", changeRuntimeClassHandler)
+		err := http.ListenAndServeTLS("0.0.0.0:443", "/etc/webhook/certs/cert.pem", "/etc/webhook/certs/key.pem", nil)
+		if err != nil {
+			klog.Error(err)
+		}
 	}()
+	klog.V(0).Info("webhook server started")
 
 	quit := make(chan os.Signal)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

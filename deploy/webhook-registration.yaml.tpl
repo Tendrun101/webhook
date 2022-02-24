@@ -10,13 +10,13 @@ metadata:
     app: pod-annotate-webhook
     kind: mutator
 webhooks:
-  - name: pod-annotate-webhook.kata.xyz
+  - name: pod-annotate-webhook.test.tendrun
     sideEffects: None
     failurePolicy: Ignore
     admissionReviewVersions: ["v1", "v1beta1"]
     clientConfig:
       service:
-        name: pod-annotate-webhook
+        name: pod-mutate-webhook
         namespace: default
         path: "/mutate"
       caBundle: CA_BUNDLE
