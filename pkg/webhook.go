@@ -3,6 +3,7 @@ package pkg
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/spf13/pflag"
 	"io/ioutil"
 	v1 "k8s.io/api/admission/v1"
 	"k8s.io/api/admission/v1beta1"
@@ -26,6 +27,28 @@ const (
          { "op": "replace", "path": "/metadata/labels/added-label", "value": "yes" }
      ]`
 )
+
+type WebhookCfg struct {
+	certFile    string
+	keyFile     string
+	nsBlacklist string
+	port        int
+	bindAddress string
+}
+
+func (whCfg *WebhookCfg) AddFlags(fs *pflag.FlagSet) {
+	if whCfg == nil {
+		return
+	}
+	fs.StringVar(&whCfg.certFile, "tls-cert-file", "",
+		"File containing the default x509 Certificate for HTTPS. (CA cert, if any, concatenated after server cert).")
+	fs.StringVar(&whCfg.keyFile, "tls-private-key-file", "",
+		"File containing the default x509 private key matching --tls-cert-file.")
+	fs.IntVar(&whCfg.port, "port", 443, "Secure port that the webhook listens on.")
+	fs.StringVar(&whCfg.nsBlacklist, "exclude-namespaces", "", "Comma separated namespace blacklist.")
+	fs.StringVar(&whCfg.bindAddress, "bind-address", "0.0.0.0", "The IP address on which to listen.")
+
+}
 
 func toV1AdmissionResponse(err error) *v1beta1.AdmissionResponse {
 	return &v1beta1.AdmissionResponse{
@@ -177,11 +200,11 @@ func changeRuntimeClassHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func WebHookServer() {
+func (whCfg WebhookCfg) WebHookServer() {
 
 	go func() {
 		http.HandleFunc("/mutate", changeRuntimeClassHandler)
-		err := http.ListenAndServeTLS("0.0.0.0:443", "/etc/webhook/certs/cert.pem", "/etc/webhook/certs/key.pem", nil)
+		err := http.ListenAndServeTLS("0.0.0.0:443", whCfg.certFile, whCfg.keyFile, nil)
 		if err != nil {
 			klog.Error(err)
 		}
